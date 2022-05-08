@@ -4,18 +4,23 @@ import cirq.contrib.quimb as ccq
 import quimb.tensor as qtn
 import random
 
-lattice_dim = 10
+lattice_dim = 4
 qubits = lattice_dim * lattice_dim
+
+num_blocks = 2
+
+block_length = 8
+depth = block_length * num_blocks
 
 num_samplings = 100
 
 optimize = 'greedy'
-backend = 'cupy'
+backend = 'numpy'
 
 circuit = supremacy_v2.generate_boixo_2018_supremacy_circuits_v2_grid(
         n_rows=lattice_dim,
         n_cols=lattice_dim,
-        cz_depth=40,
+        cz_depth=depth,
         seed=0
         )
 
