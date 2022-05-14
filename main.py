@@ -5,24 +5,28 @@ import quimb.tensor as qtn
 import random
 import numpy as np
 import random
+import cupy
+from mpi4py import MPI
 
-lattice_dim_row = 5
-lattice_dim_col = 5
+lattice_dim_row = 7
+lattice_dim_col = 7
 qubits = lattice_dim_row * lattice_dim_col
 
 num_blocks = 3
 
 block_length = 8
-depth = block_length * num_blocks
+depth = 20
+#depth = block_length * num_blocks
 
-num_samplings = 10000
+num_samplings = 10
 
 optimize = 'greedy'
 backend = 'cupy'
 
+
 print("# lattice : ", lattice_dim_col, "x", lattice_dim_row)
 print("# num qubits : ", qubits)
-print("# depth : ", num_blocks * block_length)
+print("# depth : ", depth)
 print("# num_samplings : ", num_samplings)
 print("# optimize : ", optimize)
 print("# backend : ", backend)
@@ -41,6 +45,10 @@ tensors, qubit_frontier, fix = ccq.circuit_to_tensors(
         )
 
 tn = qtn.TensorNetwork(tensors)
+
+comm = MPI.COMM_WORLD
+random.seed(comm.Get_rank())
+cupy.cuda.runtime.setDevice(comm.Get_rank())
 
 samples = []
 M = 10
@@ -64,30 +72,40 @@ for s in range(num_samplings * M):
 
     accepted = False
     if random.random() < accept_prob:
-        samples += [(bitstring, amplitude)]
+        samples += [amplitude]
         accepted = True
 
-    print("width = ", width, ",amplitude= ", amplitude, "accept_prob = ", accept_prob, "accepted = ", ("Yes" if accepted else "No"))
+    print("[", comm.Get_rank(), "] width = ", width, ",amplitude= ", amplitude, "accept_prob = ", accept_prob, "accepted = ", ("Yes" if accepted else "No"))
 
-print("Num sampled = ", len(samples), " / ", num_samplings)
-for b, a in samples:
-    print("bitstring=", b, ", amplitude=", a)
+local_num_samplings = comm.allgather(len(samples))
+total_num_samplings = np.sum(local_num_samplings)
 
-min_Np = -13
-max_Np = 8
-resolution_Np = 10
-prob_histogram = np.zeros((max_Np - min_Np + 1) * resolution_Np)
+recvbuf = np.zeros(total_num_samplings)
+sep = [0] + [sum(local_num_samplings[:i]) for i in range(len(local_num_samplings) - 1)]
+comm.Allgatherv(samples, [recvbuf, num_samplings * comm.Get_size(), sep, MPI.DOUBLE])
+samples = recvbuf
 
-for s in samples:
-    _, amplitude = s
-    prob = np.power(np.linalg.norm(amplitude), 2)
-    log_Np = np.log(prob * np.power(2, qubits, dtype=np.float64))
+if comm.Get_rank() == 0:
+    print("Num sampled = ", len(samples), " / ", num_samplings)
+    for b, a in samples:
+        print("bitstring=", b, ", amplitude=", a)
 
-    x_index = int((log_Np - min_Np) * resolution_Np)
+    min_Np = -13
+    max_Np = 8
+    resolution_Np = 10
+    prob_histogram = np.zeros((max_Np - min_Np + 1) * resolution_Np)
 
-    if x_index > 0 and x_index < (max_Np - min_Np + 1) * resolution_Np:
-        prob_histogram[x_index] += 1
+    for s in samples:
+        _, amplitude = s
+        prob = np.linalg.norm(amplitude) ** 2
+        log_Np = np.log(prob * np.power(2, qubits, dtype=np.float64))
 
-for i in range((max_Np - min_Np + 1) * resolution_Np):
-    print("{:.2f},{:e}".format((i  / resolution_Np + min_Np), prob_histogram[i] / float(len(samples))))
+        x_index = int((log_Np - min_Np) * resolution_Np)
 
+        if x_index > 0 and x_index < (max_Np - min_Np + 1) * resolution_Np:
+            prob_histogram[x_index] += 1
+
+    print("# num samples : ", len(samples), " / ", num_samplings)
+
+    for i in range((max_Np - min_Np + 1) * resolution_Np):
+        print("{:.2f},{:e}".format((i  / resolution_Np + min_Np), prob_histogram[i] / float(len(samples))))
