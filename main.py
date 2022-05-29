@@ -6,9 +6,18 @@ import random
 import numpy as np
 import random
 import argparse
+import cotengra as ctg
+
+# Cotengra optimizer
+opt = ctg.ReusableHyperOptimizer(
+    max_repeats=16,
+    reconf_opts={},
+    parallel=False,
+    progbar=True,
+)
 
 lattice_dim_row = 7
-lattice_dim_col = 7
+lattice_dim_col = 8
 qubits = lattice_dim_row * lattice_dim_col
 
 num_blocks = 3
@@ -17,7 +26,7 @@ block_length = 8
 depth = 20
 #depth = block_length * num_blocks
 
-optimize = 'greedy'
+optimize = opt
 backend = 'cupy'
 
 parser = argparse.ArgumentParser(description='Quimb RQC')
@@ -53,12 +62,11 @@ tensors, qubit_frontier, fix = ccq.circuit_to_tensors(
         )
 
 tn = qtn.TensorNetwork(tensors)
+tn_simplified = tn.rank_simplify()
 
 random.seed(sampling_seed)
 
-samples = []
-M = 10
-while len(samples) < num_samplings:
+for i in range(num_samplings):
     bitstring = "".join(random.choice('01') for _ in range(qubits))
     psi_sample = qtn.MPS_computational_state(bitstring, tags='PSI_f').squeeze()
 
@@ -67,18 +75,10 @@ while len(samples) < num_samplings:
     rename_table = {end_edges[i] : open_edges[i] for i in range(len(end_edges))}
     psi_sample.reindex_(rename_table)
 
-    circ_tn = tn.rank_simplify() & psi_sample
+    circ_tn = tn_simplified & psi_sample
     circ_tn.astype_('complex64')
 
     width = circ_tn.contraction_width(optimize=optimize)
     amplitude = circ_tn.contract(all, optimize=optimize, backend=backend)
 
-    prob_tmp = (np.power(np.linalg.norm(amplitude), 2) * np.power(2, qubits, dtype=np.float64)) / M
-    accept_prob = min(1, prob_tmp)
-
-    accepted = False
-    if random.random() < accept_prob:
-        samples += [amplitude]
-        accepted = True
-
-    print("[", len(samples), "] width = ", width, ",amplitude= ", amplitude, "accept_prob = ", accept_prob, "accepted = ", ("Yes" if accepted else "No"))
+    print("[", i, "] width = ", width, ",amplitude= ", amplitude)
