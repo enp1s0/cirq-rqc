@@ -7,13 +7,17 @@ import numpy as np
 import random
 import argparse
 import cotengra as ctg
+import optuna
 
 # Cotengra optimizer
+random.seed(0)
 opt = ctg.ReusableHyperOptimizer(
     max_repeats=16,
     reconf_opts={},
     parallel=False,
     progbar=True,
+    optlib='optuna',
+    sampler=optuna.samplers.RandomSampler(0)
 )
 
 lattice_dim_row = 7
@@ -36,7 +40,6 @@ parser.add_argument('--num_samplings', type=int, default=1, help='Random seed')
 args = parser.parse_args()
 
 num_samplings = args.num_samplings
-sampling_seed = args.seed
 
 print("# lattice : ", lattice_dim_col, "x", lattice_dim_row)
 print("# num qubits : ", qubits)
@@ -44,7 +47,7 @@ print("# depth : ", depth)
 print("# num_samplings : ", num_samplings)
 print("# optimize : ", optimize)
 print("# backend : ", backend)
-print("# sampling_seed : ", sampling_seed)
+print("# sampling_seed : ", args.seed)
 
 np.set_printoptions(threshold=np.inf)
 
@@ -62,11 +65,14 @@ tensors, qubit_frontier, fix = ccq.circuit_to_tensors(
         )
 
 tn = qtn.TensorNetwork(tensors)
+
 tn_simplified = tn.rank_simplify()
 
-random.seed(sampling_seed)
+fig = tn.graph(color=['PSI0', 'H', 'X', 'Y', 'T', 'CZ'], return_fig=True)
+fig.savefig('result.pdf')
 
 for i in range(num_samplings):
+    random.seed(i * 123867 + args.seed)
     bitstring = "".join(random.choice('01') for _ in range(qubits))
     psi_sample = qtn.MPS_computational_state(bitstring, tags='PSI_f').squeeze()
 
@@ -80,5 +86,6 @@ for i in range(num_samplings):
 
     width = circ_tn.contraction_width(optimize=optimize)
     amplitude = circ_tn.contract(all, optimize=optimize, backend=backend)
+    prob = np.power(np.absolute(amplitude), 2) * np.power(2., qubits)
 
-    print("[", i, "] width = ", width, ",amplitude= ", amplitude)
+    print("[", i, "] bs=", bitstring, " width=", width, ",amplitude=", amplitude, ", prob=", prob)
