@@ -12,34 +12,33 @@ import optuna
 # Cotengra optimizer
 random.seed(0)
 opt = ctg.ReusableHyperOptimizer(
-    max_repeats=16,
+    max_repeats=32,
     reconf_opts={},
-    parallel=False,
+    parallel=True,
     progbar=True,
     optlib='optuna',
     sampler=optuna.samplers.RandomSampler(0)
 )
 
-lattice_dim_row = 7
-lattice_dim_col = 8
-qubits = lattice_dim_row * lattice_dim_col
-
-num_blocks = 3
-
-block_length = 8
-depth = 20
-#depth = block_length * num_blocks
-
 optimize = opt
+optimize = 'greedy'
 backend = 'cupy'
 
 parser = argparse.ArgumentParser(description='Quimb RQC')
 parser.add_argument('--compute_type', type=str, default='complex64', help='Data type for computation')
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
 parser.add_argument('--num_samplings', type=int, default=1, help='Random seed')
+parser.add_argument('--depth', type=int, default=1, help='Depth')
+parser.add_argument('--dim_row', type=int, default=5, help='Dim row')
+parser.add_argument('--dim_col', type=int, default=5, help='Dim col')
 args = parser.parse_args()
 
+lattice_dim_row = args.dim_row
+lattice_dim_col = args.dim_col
+qubits = lattice_dim_row * lattice_dim_col
+
 num_samplings = args.num_samplings
+depth = args.depth
 
 print("# lattice : ", lattice_dim_col, "x", lattice_dim_row)
 print("# num qubits : ", qubits)
